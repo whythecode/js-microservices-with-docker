@@ -1,0 +1,106 @@
+version: 2
+jobs:
+
+  build:
+    docker:
+      - image: circleci/node:8
+    working_directory: ~/project/angular
+    steps:
+      - attach_workspace: &workspace
+          at: ~/project
+      - checkout:
+          path: ~/project
+      - setup_remote_docker
+      - restore_cache:
+          keys:
+            - v1-{{ .Branch }}
+          paths:
+            - install.tar
+      - run:
+          name: Load Docker image layers
+          command: |
+            set +o pipefail
+            docker load -i install.tar | true
+      - run:
+          name: Build application Docker images
+          command: |
+            docker build --cache-from=install --target=install -t install .
+            docker build --cache-from=install -t deploy .
+      - run:
+          name: Save Docker image layers
+          command: |
+            docker save -o install.tar install
+            docker save -o deploy.tar deploy
+      - save_cache:
+          key: v1-{{ .Branch }}-{{ epoch }}
+          paths:
+            - install.tar
+      - persist_to_workspace:
+          root: .
+          paths:
+            - install.tar
+            - deploy.tar
+            - docker-compose.test.yml
+
+  test_unit_functional:
+    docker:
+      - image: circleci/node:8.11.2-browsers
+    steps:
+      - attach_workspace: *workspace
+      - setup_remote_docker
+      - run: &LOAD_BUILD_IMAGE
+          name: Load Docker image layers
+          command: docker load -i install.tar
+      - run: |
+          docker create --name source install
+          docker cp source:/usr/src/app ./app
+          cd app
+          npm test
+
+  test_e2e:
+    docker:
+      - image: circleci/node:8
+    steps:
+      - attach_workspace: *workspace
+      - setup_remote_docker
+      - run:
+          name: Load Docker image layers
+          command: |
+            docker load -i install.tar
+            docker load -i deploy.tar
+      - run:
+          name: Run e2e test
+          command: |
+            docker-compose -f docker-compose.test.yml up -d
+            docker-compose -f docker-compose.test.yml run test npm run e2e
+
+  deploy:
+    docker:
+      - image: circleci/node:8
+    steps:
+      - attach_workspace: *workspace
+      - setup_remote_docker
+      - run:
+          name: Load Docker image layers
+          command: docker load -i deploy.tar
+      - run: docker inspect deploy
+
+workflows:
+  version: 2
+
+  build_and_test:
+    jobs:
+      - build
+      -
+        test_unit_functional:
+          requires:
+            - build
+      -
+        test_e2e:
+          requires:
+            - build
+      -
+        deploy:
+          requires:
+            - test_unit_functional
+            - test_e2e

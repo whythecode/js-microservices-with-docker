@@ -1,0 +1,74 @@
+version: '2.3'
+
+volumes:
+  dist:
+
+services:
+
+  # app builder
+  app:
+    build:
+      context: .
+      target: install
+    image: app
+    volumes:
+      - ./:/usr/src/app
+      - dist:/usr/src/app/dist
+      - /usr/src/app/node_modules
+    command: [npm, run, watch]
+    environment:
+      BASE_PATH: /demo/
+
+  #live:
+  #  build: .
+  #  environment:
+  #    BASE_PATH: /demo/
+  #    PEOPLE_PATH: https://jsonplaceholder.typicode.com/users
+  #    UI_VARS: PEOPLE_PATH
+
+  # app delivery
+  app-nginx:
+    build:
+      context: .
+      dockerfile: Dockerfile-nginx-dev
+    volumes:
+      - ./local.nginx.conf:/etc/nginx/conf.d/default.conf
+      - ./scripts/init-nginx-with-runtime-envs.sh:/init.sh
+      - ./scripts/add-runtime-envs.sh:/add-runtime-envs.sh
+      - dist:/usr/share/nginx/html
+    command: /init.sh
+    init: true # forwards process signals - see https://github.com/Yelp/dumb-init
+    environment:
+      OUTPUT_PATH: /usr/share/nginx/html/env.json
+      VAR_A: A
+      VAR_B: B
+      #PEOPLE_PATH: https://jsonplaceholder.typicode.com/users
+      UI_VARS: BASE_PATH,VAR_B
+
+  # gateway
+  proxy:
+    image: nginx:1.13.5-alpine
+    volumes:
+      - ./proxy.nginx.conf:/etc/nginx/conf.d/default.conf
+    ports:
+      - 5000:80
+
+  # webdriver
+  chrome:
+    image: selenium/standalone-chrome:latest
+    volumes:
+      - /dev/shm:/dev/shm
+
+  # e2e testing
+  e2e:
+    build:
+      context: .
+      target: install
+    image: app
+    volumes_from:
+      - app
+    working_dir: /usr/src/app
+    command: /bin/true
+    environment:
+      SELENIUM_ADDRESS: http://chrome:4444/wd/hub
+      BASE_URL: http://proxy/demo/

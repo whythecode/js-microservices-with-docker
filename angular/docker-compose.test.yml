@@ -1,0 +1,15 @@
+version: '2.3'
+
+services:
+  driver:
+    image: selenium/standalone-chrome:latest
+
+  test:
+    image: install
+    command: /bin/true
+    environment:
+      SELENIUM_ADDRESS: http://driver:4444/wd/hub
+      BASE_URL: http://deploy/
+
+  deploy:
+    image: deploy

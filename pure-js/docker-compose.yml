@@ -1,0 +1,24 @@
+version: '2.2'
+
+services:
+  nginx:
+    build:
+      context: .
+      dockerfile: Dockerfile-nginx-dev
+    volumes:
+      - ./:/usr/share/nginx/html
+      - ./local.nginx.conf:/etc/nginx/conf.d/default.conf
+      - ./scripts/add-runtime-envs.sh:/add-runtime-envs.sh
+      - ./scripts/init-nginx-with-runtime-envs.sh:/init.sh
+    working_dir: /usr/share/nginx/html
+    command: /init.sh
+    init: true
+    ports:
+      - 6050:80
+    environment:
+      INDEX_HTML_PATH: index.html
+      BASE_PATH: /
+      SOME_OTHER_VAR: Yo
+      SOME_PRIVATE_VAR: You can't see me
+      IMAGE: 1
+      UI_VARS: BASE_PATH,SOME_OTHER_VAR,IMAGE
